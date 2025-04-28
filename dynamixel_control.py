@@ -77,7 +77,6 @@ class DynamixelController:
     # https://emanual.robotis.com/docs/en/dxl/x/xm540-w270/#present-position132
     def present_position(self, dxl_id):
         val, res, err = self.read_4_byte(dxl_id, 132)
-        print(val)
         val = int((4095 / 2 - val) / 4095 * 360)
         return val
 
