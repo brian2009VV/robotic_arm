@@ -1,0 +1,52 @@
+Instructions before use:
+  1. essential import python file: dynamixel_control, robotic_arm_control
+  2. robotic arm id list: 11, 13, 15, 14, 12, 1, 2 (cannot change the order)
+  3. essential instantiating Dynamixel classes: Dy = DynamixelController()
+  4. essential instantiating Robotic classes: Ro = RoboticController()
+
+Instruction manual:
+  1. Ro.open_robotic_arm("COM4", id_list, Dy)
+    function: 
+          open the motors
+    input: 
+          com_id, (input form: list)
+          motor_id_list, (input form: list)
+          Dy
+    return:
+          output, open success or not (output form: string)
+
+  2. Ro.go_to_real_xyz_alpha(id_list, pos, a0, a1, a2, state, Dy)
+    function:
+            robotic arm goes to designated position, with the horizontal angle, the open clip angle, the turn clip angle, and turning clockwise or counterclockwise form
+    input: motor_id_list, (input form: list)
+            goal_position_x_y_z, unit: mm, (input form: list)
+            horizontal_angle, (input form: int)
+            open_or_close, -8: min_close, 90: max_open, (input form: int)
+            trun_clip_angle, always position number, (input form: int)
+            turn_clip_state, 0: clockwise , 1: counterclockwise, (input form: 0 or 1)
+            Dy
+    return:
+            success: moving the robtoic arm 
+            fail: output, fail the go to point (output form: string)
+
+  3. Ro.get_real_xyz(depth, x, y, pos, frame)
+    function:
+            return the real position of the designated pixel position
+    input:
+            depth, unit: mm, upper the arm: positive, below the arm: negative, (input form: int)
+            pixel_position_x, (input form: int)
+            pixel_position_y, (input form: int)
+            present_robotic_arm_position_x_y_z, (input form: list)
+            robtoic_arm_camera_frame (input form: array)
+    return:
+            real_x_y_z (unit, mm) (output form: list)
+
+  4. Ro.yolo_detection(model_name, class_name, frame)
+      function:
+            return the designated class center_pos, object_box_size and object_turning_anlge
+      input:
+            model_name, semantic segmentation model, (input form: string)
+            class_name, (input form: string)
+            frame, camera_frame (input form: array)
+      return:
+            designated class center_pos, object_box_size and object_turning_anlge (output form: list)
