@@ -26,7 +26,7 @@ class RoboticController:
         if goal_position_x == 0:
             sita = 0
         elif goal_position_y == 0:
-            sita = pi / 2
+            sita = pi / 2 * abs(goal_position_x) / goal_position_x
         else:
             sita = math.atan(goal_position_x/goal_position_y)
 
@@ -146,7 +146,7 @@ class RoboticController:
         if a2 > 85 or a2 < -90:
             return None
 
-        if a3 < -90 or a3 > 110:
+        if a3 < -90 or a3 > 115:
             return None
 
         return 1
@@ -218,10 +218,12 @@ class RoboticController:
         data = self.calulate_to_xyza(px, py, pz, horizontal_angle)
 
         if data is None:
+            print("data is None")
             print("fail to get to point")
             return None
 
         if self.check_angle(data) is None:
+            print("angle is fail")
             print("fail to get to point")
             return None
 
@@ -254,31 +256,35 @@ class RoboticController:
                 self.turn_clip(id_list[i], target_angle[i], Dy)
             elif i == 6:
                 self.open_close_clip(id_list[i], target_angle[i], Dy)
-        time.sleep(5)
+        time.sleep(8)
 
-    def yolo_detection(self, model, name, frame):
-        model = YOLO(model)
+    def yolo_seg_detection(self, model, name, frame, num):
         results = model.predict(
             source=frame,
-            conf=0.4,
+            conf=0.5,
             imgsz=640,
             verbose=False
         )
         mask_combined = np.zeros(frame.shape[:2], dtype=np.uint8)
         rotated_boxes = []
 
+        count = 0
         for result in results:
             if result.masks is not None:
                 for i, mask in enumerate(result.masks.data):
                     class_id = int(result.boxes.cls[i])
                     if model.names[class_id] == name:
+                        count += 1
                         binary_mask = (mask.cpu().numpy() * 255).astype(np.uint8)
                         binary_mask = cv2.resize(binary_mask, (frame.shape[1], frame.shape[0]))
                         mask_combined = cv2.bitwise_or(mask_combined, binary_mask)
 
+        if count != num:
+            return None
+
         if np.max(mask_combined) > 0:
             contours, _ = cv2.findContours(mask_combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 2000]
+            valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 1500]
 
             for cnt in valid_contours:
                 rotated_rect = cv2.minAreaRect(cnt)
@@ -295,24 +301,14 @@ class RoboticController:
                 res.append([center, size, angle, box])
             return res
 
-    def get_real_xyz(self, depth, x, y, posi, frame):
-        L = (posi[0] ** 2 + posi[1] ** 2) ** 0.5
-        L = L + 35
-        if posi[0] == 0:
-            angle = np.pi / 2
-        else:
-            angle = math.atan(posi[1]/posi[0])
-
-        posi[0] = L * math.cos(angle)
-        posi[1] = L * math.sin(angle)
-
+    def get_real_xyz_armcam(self, depth, x, y, posi, frame):
         if x < 0 or y < 0:
             return 0, 0, 0
 
         x = int(x)
         y = int(y)
         a = 48 * np.pi / 180
-        b = 62.85 * np.pi / 180
+        b = 62 * np.pi / 180
         d = int(depth)
         h, w = frame.shape[:2]
         h = int(h)
@@ -320,18 +316,102 @@ class RoboticController:
 
         x = x - w // 2
         y = y - h // 2
-        real_y = int(y) * 2 * int(d) * np.tan(a / 2) / int(h)
-        real_x = int(x) * 2 * int(d) * np.tan(b / 2) / int(w)
+        real_y_pi = int(y) * 2 * int(d) * np.tan(a / 2) / int(h)
+        real_x_pi = int(x) * 2 * int(d) * np.tan(b / 2) / int(w)
 
-        real_x = -real_x
-
-        print("real = ", real_x, real_y)
+        real_x_pi = -real_x_pi
         real_z = depth
 
-        real_x = real_x + posi[0]
-        real_y = real_y + posi[1]
+        L = (posi[0] ** 2 + posi[1] ** 2) ** 0.5 + 30
+
+        theta = math.atan(real_x_pi / (L + real_y_pi))
+
+        if posi[0] == 0:
+            phi = 0
+        elif posi[1] == 0:
+            phi = math.pi / 2 * abs(posi[0]) / posi[0]
+        else:
+            phi = math.atan(posi[0] / posi[1])
+
+        l = (real_x_pi ** 2 + (real_y_pi + L) ** 2) ** 0.5
+
+        real_x = l * math.sin(phi + theta)
+        real_y = l * math.cos(phi + theta)
 
         return real_x, real_y, real_z
 
+    def get_real_xyz_groundcam(self, depth, x, y, frame):
+        a = 42 * np.pi / 180
+        b = 69 * np.pi / 180
+        d = int(depth)
+        h, w = frame.shape[:2]
+        x = int(x) - int(w // 2)
+        y = int(y) - int(h // 2)
+        real_y = round(int(y) * 2 * int(d) * np.tan(a / 2) / int(h))
+        real_x = round(int(x) * 2 * int(d) * np.tan(b / 2) / int(w))
+        return int(real_x), int(d + 100), int(-real_y - 80)
+
+    def yolo_human_pos_direction(self, cf, dp):
+        model = YOLO("yolo11m-pose.pt")
+
+        point = [0, 0, 999999, 0, 0, 999999]
+        xyz1 = []
+        xyz2 = []
+
+        results = model.predict(
+            source=cf,
+            conf=0.3,
+            imgsz=640,
+            verbose=False
+        )
+
+        for result in results:
+            xy = result.keypoints.xy
+
+            for i in xy:
+                if len(i) < 16:
+                    continue
+
+                if i[7][0] == 0 and i[7][1] == 0:
+                    continue
+                if i[9][0] == 0 and i[9][1] == 0:
+                    continue
+
+                x1 = int(i[7][0])
+                y1 = int(i[7][1])
+                x2 = int(i[9][0])
+                y2 = int(i[9][1])
+
+                if dp[y1][x1] < point[2] and dp[y1][x1] != 0 and dp[y1][x1] < 1500:
+                    point[0] = x1
+                    point[1] = y1
+                    point[2] = int(dp[y1][x1])
+
+                if dp[y2][x2] < point[5] and dp[y2][x2] != 0 and dp[y2][x2] < 1500:
+                    point[3] = x2
+                    point[4] = y2
+                    point[5] = int(dp[y2][x2])
 
 
+        if point[2] != 999999 and point[5] != 999999:
+            xyz1 = self.get_real_xyz_groundcam(point[2], point[0], point[1], dp)
+            xyz2 = self.get_real_xyz_groundcam(point[5], point[3], point[4], dp)
+            return [xyz1, xyz2, point]
+
+        return None
+
+    def get_distance(self, px, py, pz, ax, ay, az, bx, by, bz):
+        A, B, C, p1, p2, p3, qx, qy, qz, distance = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        A = int(bx) - int(ax)
+        B = int(by) - int(ay)
+        C = int(bz) - int(az)
+        p1 = int(A) * int(px) + int(B) * int(py) + int(C) * int(pz)
+        p2 = int(A) * int(ax) + int(B) * int(ay) + int(C) * int(az)
+        p3 = int(A) * int(A) + int(B) * int(B) + int(C) * int(C)
+        if (p1 - p2) != 0 and p3 != 0:
+            t = (int(p1) - int(p2)) / int(p3)
+            qx = int(A) * int(t) + int(ax)
+            qy = int(B) * int(t) + int(ay)
+            qz = int(C) * int(t) + int(az)
+            return int(int(pow(((int(qx) - int(px)) ** 2 + (int(qy) - int(py)) ** 2 + (int(qz) - int(pz)) ** 2), 0.5)))
+        return 0
