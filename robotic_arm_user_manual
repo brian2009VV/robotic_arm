@@ -41,11 +41,11 @@ Instruction manual:
     return:
             real_x_y_z (unit, mm) (output form: list)
 
-  4. Ro.yolo_detection(model_name, class_name, frame)
+  4. Ro.yolo_detection(model, class_name, frame)
       function:
             return the designated class center_pos, object_box_size and object_turning_anlge
       input:
-            model_name, semantic segmentation model, (input form: string)
+            model, semantic segmentation model, (input form: yolo model)
             class_name, (input form: string)
             frame, camera_frame (input form: array)
       return:
