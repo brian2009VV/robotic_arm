@@ -79,26 +79,19 @@ while True:
             t = res[i]
             x = int(t[0][0])
             y = int(t[0][1])
-            angle = int(t[2])
 
-            l1 = (t[3][3][0] - t[3][2][0]) ** 2 + (t[3][3][1] - t[3][2][1]) ** 2
-            l2 = (t[3][3][0] - t[3][0][0]) ** 2 + (t[3][3][1] - t[3][0][1]) ** 2
+            center_x, center_y, center_z = Ro.get_real_xyz_armcam(-355, x, y, [0, 200, 150], overlay)
 
-            if l1 > l2:
-                turn_clip_angle = angle
-            else:
-                turn_clip_angle = -(90 - angle)
+            boxes_point = t[3]
+            real_box_point = []
 
-            if turn_clip_angle > 0:
-                state = 0
-            else:
-                state = 1
+            for j in boxes_point:
+                j_x, j_y, j_z = Ro.get_real_xyz_armcam(-355, j[0], j[1], [0, 200, 150], overlay)
+                real_box_point.append([j_x, j_y, j_x])
 
-            turn_clip_angle = abs(turn_clip_angle)
+            turn_clip_angle, state = Ro.calulate_box_to_angle_vertical_version(real_box_point, [center_x, center_y, center_z], 90)
+            xyz_list.append([[center_x, center_y, center_z], turn_clip_angle, state])
 
-            k = Ro.get_real_xyz_armcam(-250, x, y, [0, 200, 150], overlay)
-            if k is not None:
-                xyz_list.append([k, turn_clip_angle, state])
 
     if len(xyz_list) != 0:
         cv2.destroyAllWindows()
@@ -122,8 +115,8 @@ for i in d:
 
 Ro.go_to_real_xyz_alpha(id_list, [0, 200, 150], 82, 0, 90, 0, Dy)
 Ro.go_to_real_xyz_alpha(id_list, [m[1], m[2], m[3] + 150], 82, m[4], 90, m[5], Dy)
-Ro.go_to_real_xyz_alpha(id_list, [m[1], m[2], m[3] + 70], 82, m[4], 90, m[5], Dy)
-Ro.go_to_real_xyz_alpha(id_list, [m[1], m[2], m[3] + 70], 82, m[4], 30, m[5], Dy)
+Ro.go_to_real_xyz_alpha(id_list, [m[1], m[2], m[3] + 60], 82, m[4], 90, m[5], Dy)
+Ro.go_to_real_xyz_alpha(id_list, [m[1], m[2], m[3] + 60], 82, m[4], 30, m[5], Dy)
 Ro.go_to_real_xyz_alpha(id_list, [0, 100, 350], 0, 0, 30, 0, Dy)
 Ro.go_to_real_xyz_alpha(id_list, [-100, 50, 350], 0, 0, 30, 0, Dy)
 Ro.go_to_real_xyz_alpha(id_list, [-100, 50, 350], 0, 0, 90, 0, Dy)
