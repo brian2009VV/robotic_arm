@@ -169,12 +169,14 @@ class RoboticController:
         angle_max = 90
         angle_min = -8
         if alpha > 90 or alpha < -8:
+            print("fail to open or close the clip")
             return None
 
         Dy.goal_absolute_direction(id, alpha)
 
     def turn_clip(self, id, alpha, Dy):
         if alpha < -90 or alpha > 90:
+            print("fail to turn the clip")
             return None
 
         Dy.goal_absolute_direction(id, alpha)
@@ -206,6 +208,36 @@ class RoboticController:
         Dy.open(com)
         for i in id_list:
             Dy.torque_enable(i)
+
+    def get_double_rotate_coordinate(self, px, py, pz, alpha, beta):
+        alpha = -alpha * np.pi / 180
+        beta = -beta * np.pi / 180
+
+        if px == 0:
+            theta = 0
+        elif py == 0:
+            theta = math.pi / 2 * abs(px) / px
+        else:
+            theta = math.atan(px / py)
+
+        L = (px ** 2 + py ** 2 + pz ** 2) ** 0.5
+
+        ax = L * math.sin(alpha + theta)
+        ay = L * math.cos(alpha + theta)
+        az = pz
+
+        if az == 0:
+            sita = 0
+        elif ay == 0:
+            sita = math.pi / 2 * abs(az) / az
+        else:
+            sita = math.atan(az / ay)
+
+        bz = L * math.sin(sita + beta)
+        by = L * math.cos(sita + beta)
+        bx = ax
+
+        return [bx, by, bz]
 
     def go_to_real_xyz_alpha(self, id_list, goal_position_list, horizontal_angle, turn_clip_angle, open_clip_angle, state, Dy):
         if state == 0:
@@ -247,7 +279,7 @@ class RoboticController:
 
         target_angle = [ang[0], ang[1], -ang[1], ang[2], ang[3], ang[4], ang[5]]
         for i in range(len(id_list)):
-            if abs(present_angle[i] - target_angle[i]) < 4:
+            if abs(present_angle[i] - target_angle[i]) < 3:
                 continue
 
             if i <= 4:
@@ -256,7 +288,8 @@ class RoboticController:
                 self.turn_clip(id_list[i], target_angle[i], Dy)
             elif i == 6:
                 self.open_close_clip(id_list[i], target_angle[i], Dy)
-        time.sleep(8)
+
+        time.sleep(5)
 
     def yolo_seg_detection(self, model, name, frame, num):
         results = model.predict(
@@ -302,9 +335,6 @@ class RoboticController:
             return res
 
     def get_real_xyz_armcam(self, depth, x, y, posi, frame):
-        if x < 0 or y < 0:
-            return 0, 0, 0
-
         x = int(x)
         y = int(y)
         a = 48 * np.pi / 180
@@ -415,3 +445,58 @@ class RoboticController:
             qz = int(C) * int(t) + int(az)
             return int(int(pow(((int(qx) - int(px)) ** 2 + (int(qy) - int(py)) ** 2 + (int(qz) - int(pz)) ** 2), 0.5)))
         return 0
+
+    def calulate_box_to_angle_vertical_version(self, point, center, horizontal_angle):
+        goalx = center[0]
+        goaly = center[1]
+        goalz = center[2]
+
+        data = self.calulate_to_xyza(goalx, goaly, goalz, horizontal_angle)
+
+        if data is None:
+            print("fail to go to point")
+            return None
+
+        a0 = data[0]
+        a1 = -data[3]
+
+        res = []
+        for i in point:
+            x_pi = i[0]
+            y_pi = i[1]
+            z_pi = i[2]
+            res.append(self.get_double_rotate_coordinate(x_pi, y_pi, z_pi, a0, a1))
+
+        ps = []
+        for i in res:
+            x = i[0]
+            y = i[1]
+            ps.append([x, y])
+
+        ps = np.array(ps, dtype=np.float32)
+
+        l1 = (ps[3][0] - ps[2][0]) ** 2 + (ps[3][1] - ps[2][1]) ** 2
+        l2 = (ps[3][0] - ps[0][0]) ** 2 + (ps[3][1] - ps[0][1]) ** 2
+
+        if l1 > l2:
+            dx = ps[3][0] - ps[2][0]
+            dy = ps[3][1] - ps[2][1]
+        else:
+            dx = ps[3][0] - ps[0][0]
+            dy = ps[3][1] - ps[0][1]
+
+        if dx == 0:
+            turn_clip_angle = 0
+        elif dy == 0:
+            turn_clip_angle = 90 * abs(dx) / dx
+        else:
+            turn_clip_angle = math.atan(dx / dy)
+
+        if turn_clip_angle > 0:
+            state = 0
+        else:
+            state = 1
+
+        turn_clip_angle = abs(turn_clip_angle) * 180 / np.pi
+
+        return turn_clip_angle, state
