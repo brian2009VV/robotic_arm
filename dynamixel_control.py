@@ -78,6 +78,8 @@ class DynamixelController:
     def present_position(self, dxl_id):
         val, res, err = self.read_4_byte(dxl_id, 132)
         val = int((4095 / 2 - val) / 4095 * 360)
+        if dxl_id == 13:
+            val = -val
         return val
 
     def goal_absolute_direction(self, dxl_id, goal_angle):
