@@ -236,7 +236,7 @@ class RoboticController:
         if data is None:
             print("data is None")
             print("fail to get to point")
-            return None
+            return False
 
         ang = [data[0], data[1], data[2], data[3], turn_clip_angle, open_clip_angle]
 
