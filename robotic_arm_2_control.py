@@ -18,14 +18,15 @@ class RoboticController:
     def calulate_to_xyza(self, goal_x, goal_y, goal_z, horizontal_angle):
         horizontal_angle = horizontal_angle / 180 * np.pi
         p = self.calculate_relative_coordinate(goal_x, goal_y, goal_z, horizontal_angle)
-        l = self.calculate_angle(p[0], p[1], p[2])
+        l = self.calculate_angle(p[0], p[1], p[2], goal_x, goal_y, goal_z)
 
         if l is None:
             return None
 
         a = self.calculate_auxiliary_angle(goal_x, goal_y, goal_z, p[0], p[1], p[2], l[6], l[7], l[8])
 
-        res = [l[0], l[1], l[2], a]
+        res = [l[0], l[1], l[2], -a]
+        print(res)
         return res
 
     def calculate_auxiliary_angle(self, x0, y0, z0, x1, y1, z1, x2, y2, z2):
@@ -34,7 +35,6 @@ class RoboticController:
 
         k = (x0 - x1) * (x2 - x1) + (y0 - y1) * (y2 - y1) + (z0 - z1) * (z2 - z1)
         f = np.pi - math.acos(k / (L1 * L2))
-
         m = x1 - x2
         n = y1 - y2
         p = z1 - z2
@@ -54,32 +54,43 @@ class RoboticController:
             l = (y0 - y2) / n
         standard_z = l * p + z2
 
-        if n > 0:
-            if z0 > standard_z:
-                f = -f
-        else:
+        if y2 - y1 > 0:
             if z0 < standard_z:
                 f = -f
-        return f / np.pi * 180
+        else:
+            if z0 > standard_z:
+                f = -f
 
+        return f / np.pi * 180
     def calculate_relative_coordinate(self, goal_x, goal_y, goal_z, angle1):
         L = 180
 
         if goal_x == 0:
             angle0 = 0
         elif goal_y == 0:
-            angle0 = np.pi / 2
+            if goal_x > 0:
+                angle0 = np.pi / 2
+            else:
+                angle0 = -np.pi / 2
         else:
-            angle0 = math.atan(goal_x/ goal_y)
+            angle0 = math.atan(goal_x / goal_y)
 
         nx = goal_x - L * math.cos(angle1) * math.sin(angle0)
         ny = goal_y - L * math.cos(angle0) * math.cos(angle1)
         nz = L * math.sin(angle1) + goal_z
 
+        if abs(nx) < 0.001:
+            nx = 0
+        if abs(ny) < 0.001:
+            ny = 0
+        if abs(nz) < 0.001:
+            nz = 0
+
         res = [nx, ny, nz]
+        print(res)
         return res
 
-    def calculate_angle(self, goal_position_x, goal_position_y, goal_position_z):
+    def calculate_angle(self, goal_position_x, goal_position_y, goal_position_z, original_x, original_y, original_z):
         L1 = 248.25
         L2 = 18.5
         L3 = 193.25
@@ -91,23 +102,30 @@ class RoboticController:
         if L4 < 80:
             return None
 
-        if goal_position_x == 0:
+        if original_x == 0:
             sita = 0
-        elif goal_position_y == 0:
-            sita = math.pi / 2 * abs(goal_position_x) / goal_position_x
+        elif original_y == 0:
+            sita = math.pi / 2 * abs(original_x) / original_x
         else:
-            sita = math.atan(goal_position_x/goal_position_y)
+            sita = math.atan(original_x/original_y)
 
         t = (L1 ** 2 + L2 ** 2 + L4 ** 2 - L3 ** 2) / (2 * math.sqrt(L1 ** 2 + L2 ** 2) * L4)
 
-        if goal_position_x ** 2 + goal_position_y ** 2 == 0:
-            alpha =  math.pi / 2 - math.atan(L2/L1) - math.acos(t) - math.pi / 2
-        else:
-            if goal_position_y >= 0:
-                alpha = math.pi / 2 - math.atan(L2 / L1) - math.acos(t) - math.atan(goal_position_z / math.sqrt(goal_position_x ** 2 + goal_position_y ** 2))
+        if goal_position_y == 0:
+            if original_x > 0:
+                alpha = - math.acos(t) - math.atan(L2 / L1)
             else:
-                alpha = math.pi / 2 - math.atan(L2 / L1) - math.acos(t) - (np.pi - math.atan(goal_position_z / math.sqrt(goal_position_x ** 2 + goal_position_y ** 2)))
-
+                alpha = math.acos(t) + math.atan(L2 / L1)
+        else:
+            gamma = math.atan(goal_position_z / math.sqrt(goal_position_x ** 2 + goal_position_y ** 2) * abs(goal_position_y) / goal_position_y)
+            if goal_position_y > 0 and original_y >= 0:
+                alpha = math.pi / 2 - math.acos(t) - math.atan(L2 / L1) - gamma
+            elif goal_position_y < 0 and original_y > 0:
+                alpha = -math.pi / 2 - math.acos(t) - math.atan(L2 / L1) - gamma
+            elif goal_position_y > 0 and original_y <= 0:
+                alpha = math.pi / 2 + math.acos(t) + math.atan(L2 / L1) - gamma
+            elif goal_position_y < 0 and original_y < 0:
+                alpha = -math.pi / 2 + math.acos(t) + math.atan(L2 / L1) - gamma
 
         xa = L1 * math.sin(alpha) * math.sin(sita)
         ya = L1 * math.sin(alpha) * math.cos(sita)
@@ -117,7 +135,24 @@ class RoboticController:
         yb = ya + L2 * math.cos(alpha) * math.cos(sita)
         zb = za - L2 * math.sin(alpha)
 
+        if abs(xa) < 0.001:
+            xa = 0
+        if abs(ya) < 0.001:
+            ya = 0
+        if abs(za) < 0.001:
+            za = 0
+        if abs(xb) < 0.001:
+            xb = 0
+        if abs(yb) < 0.001:
+            yb = 0
+        if abs(zb) < 0.001:
+            zb = 0
+
+        print(xa, ya, za, xb, yb, zb)
         k = (xa - xb) * (goal_position_x - xb) + (ya - yb) * (goal_position_y - yb) + (za - zb) * (goal_position_z - zb)
+        print("k = ", k / L2 / L3)
+        ######
+
         beta = math.pi - math.acos(k / (L2 * L3))
 
         m = xb - xa
@@ -220,10 +255,10 @@ class RoboticController:
         for i in id_list:
             present_angle.append(Dy.present_position(i))
 
-        target_angle = [ang[0], ang[1], -ang[1], ang[2], -ang[2], -ang[3], ang[4], ang[5]]
+        target_angle = [ang[0], ang[1], -ang[1], ang[2], -ang[2], ang[3], ang[4], ang[5]]
 
         for i in range(len(id_list)):
-            if abs(present_angle[i] - target_angle[i]) < 3:
+            if abs(present_angle[i] - target_angle[i]) < 2:
                 continue
 
             if i <= 5:
